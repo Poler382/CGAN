@@ -1,0 +1,262 @@
+package GAN
+import breeze.linalg._
+
+object GAN2{
+
+  val rand = new scala.util.Random(0)
+
+  def image_mono(xs:Array[Array[Double]],imsize:Int,size:Int, fn:String){
+    var im = Array.ofDim[Int](imsize*size,imsize*size,3)
+    var x = xs
+
+    for(i <- 0 until x.size; j <- 0 until x(0).size){
+      x(i)(j) = x(i)(j)*256
+      if(x(i)(j) < 0){
+        x(i)(j) = 0
+      }else if(x(i)(j) > 255){
+        x(i)(j) = 255
+      }
+    }
+
+    for(i <- 0 until x.size; j <- 0 until x(0).size){
+      var x_im = Array(x(i)(j).toInt, x(i)(j).toInt, x(i)(j).toInt)
+      im(i/size*imsize + j/imsize)(i%size*imsize + j%imsize) = x_im
+    }
+
+    VAE.VAE.write(fn,im)
+
+  }
+
+
+  def make_noise(n:Int) = 
+    (0 until n).map(_ => rand.nextGaussian).toArray
+
+  def onehot(s:Int, n:Int) = {
+    val a = new Array[Double](s)
+    a(n) = 1d
+    a
+  }
+
+  def make_D_label(n:Int, h:Int, w:Int, i:Int) : Array[Double] = 
+    (0 until n).map(j => (0 until h * w).map(_ => if(i == j) 1d else 0d).toArray).flatten.toArray
+
+  def make_D_in(xs:Array[DenseVector[Double]],ns:Array[Int]) = 
+    (0 until xs.size).map(i => make_D_in1(xs(i),ns(i))).toArray
+
+  def make_D_in1(x:DenseVector[Double], n:Int) = 
+    DenseVector(x.toArray ++ make_D_label(10,28,28,n))
+
+  def make_G_in(ns:Array[Int]) = 
+    ns.map(make_G_in1)
+
+  def make_G_in1(n:Int) = 
+    DenseVector(make_noise(100) ++ onehot(10,n))
+
+  def take(xs:Array[DenseVector[Double]],n:Int) = 
+    xs.map(x => DenseVector(x.toArray.take(n)))
+
+  def makeOneV(dn:Int, n:Int)={
+    var t1 = new Array[DenseVector[Double]](dn)
+    var t2 = new Array[Array[DenseVector[Double]]](dn)
+    var z = new Array[DenseVector[Double]](dn)
+
+    //Gのz作成
+    for(i <- 0 until dn){
+      //ベクトル作成
+      var t1_D = DenseVector.zeros[Double](10)
+      var num = 0
+      if(n == 0){
+        num = rand.nextInt(10)
+      }else{
+        num = i/10
+      }
+
+      t1_D(num) = 1d
+      t1(i) = t1_D
+
+      //zの作成
+      var zs = DenseVector.zeros[Double](110)
+      for(j <- 0 until 100){
+        zs(j) = rand.nextGaussian()
+      }
+      for(k <- 0 until 10){
+        zs(100+k) = t1_D(k)
+      }
+
+      z(i) = zs
+
+
+      //t2
+      var t2_D1 = DenseVector.ones[Double](28*28)
+      var t2_D0 = DenseVector.zeros[Double](28*28)
+      var t2_A = new Array[DenseVector[Double]](11)
+
+      t2_A(0) = t2_D0
+      for(k <- 1 to 10){
+        if(k-1 == num){
+          t2_A(k) = t2_D1
+        }else{
+          t2_A(k) = t2_D0
+        }
+      }
+      t2(i) = t2_A
+    }
+
+    (z,t2)
+  }
+
+
+  def main(args:Array[String]) = {
+    val ln = args(0).toInt
+    val dn = args(1).toInt
+    val flag = args(2).toInt
+    val cgan = args(3) == "cgan"
+
+    sub_main1(ln,dn,flag,cgan)
+  }
+
+  def sub_main1(ln:Int, dn:Int, flag:Int,cgan:Boolean) = {
+    val G_in = if(cgan) 110 else 100
+    val D_in = if(cgan) 784 * 11 else 784
+
+    var af1 = new pll.Affine(G_in,256,2e-4,0.5); af1.W = pll.CNN.truncated_normal(af1.W.size)
+    var af2 = new pll.Affine(256,512,2e-4,0.5); af2.W = pll.CNN.truncated_normal(af2.W.size)
+    var af3 = new pll.Affine(512,1024,2e-4,0.5); af3.W = pll.CNN.truncated_normal(af3.W.size)
+    var af4 = new pll.Affine(1024,784,2e-4,0.5); af4.W = pll.CNN.truncated_normal(af4.W.size)
+
+    var af5 = new pll.Affine(D_in,512); af5.W = pll.CNN.truncated_normal(af5.W.size)
+    var af6 = new pll.Affine(512,256); af6.W = pll.CNN.truncated_normal(af6.W.size)
+    var af7 = new pll.Affine(256,1); af7.W = pll.CNN.truncated_normal(af7.W.size)
+
+    var bn1 = new pll.BNa(256,2e-4,0.5)
+    var bn2 = new pll.BNa(512,2e-4,0.5)
+    var bn3 = new pll.BNa(1024,2e-4,0.5)
+  
+    var sig = new pll.Sigmoid()
+    var tanh = new pll.Tanh()
+    
+    var lr = new pll.LeakyReLU(0.2)
+    var lr2 = new pll.LeakyReLU(0.2)
+    var lr3 = new pll.LeakyReLU(0.2)
+
+    var r = new pll.ReLU()
+    var r2 = new pll.ReLU()
+
+
+    if(flag == 1){
+      var a1 = af1.load("af1.txt")
+      var a2 = af2.load("af2.txt")
+      var a3 = af3.load("af3.txt")
+      var a4 = af4.load("af4.txt")
+      var a5 = af5.load("af5.txt")
+      var a6 = af6.load("af6.txt")
+      var a7 = af7.load("af7.txt")
+
+      var b1 = bn1.load("bn1.txt")
+      var b2 = bn2.load("bn2.txt")
+      var b3 = bn3.load("bn3.txt")
+    }
+
+    val layer_G = List(af1,lr,bn1,af2,lr2,bn2,af3,lr3,bn3,af4,tanh)
+    val layer_D = List(af5,r,af6,r2,af7,sig)
+
+    val (dtrain, dtest) = VAE.VAE.load_mnist("/home/share/fashion-mnist")
+
+    for(learn <- 0 until ln){
+      var LD = 0d
+      var LG = 0d
+      var crr_y = 0d
+      var crr_x = 0d
+      var y2s = List[Double]()
+
+ //G更新
+      val ns = (0 until dn).map(i => rand.nextInt(10)).toArray
+      val zs = make_G_in(ns)
+      val y = pll.CNN.forwards(layer_G, take(zs,G_in))
+      val yc = make_D_in(y,ns)
+      var y2 = pll.CNN.forwards(layer_D,take(yc,D_in))
+      y2s ++= y2.map(_(0)).toList
+
+      for(i <- 0 until dn){
+        LG += -math.log(1d-y2(i)(0)+1e-8)
+      }
+
+      val d3 = pll.CNN.backwards(layer_D, y2.map(a => -1d/:/(a)))
+      var d2 = pll.CNN.backwards(layer_G, take(d3,28*28))
+      pll.CNN.updates(layer_G)
+      pll.CNN.resets(layer_D)
+
+      val ns_im = if(learn % 10 == 0) (0 until dn).map(i => i % 10).toArray else ns
+      val zs2 = make_G_in(ns_im)
+      var y_ = pll.CNN.forwards(layer_G,zs2.take(G_in))
+      val y_im = y_.map(a => ((1d+:+a)/:/2d).toArray)
+      pll.CNN.resets(layer_G)
+
+      var fname = f"GAN2/$learn%05d.txt"
+      val pw = new java.io.PrintWriter(fname)
+      for(i <- 0 until dn; j <- 0 until 28*28){
+        pw.print(y_(i)(j))
+        if(j != 28*28-1){
+          pw.print(",")
+        }
+      
+        if(i != dn-1){
+          pw.print("\n")
+        }
+      }
+      pw.close()
+
+      //入力y、D更新
+      val yc2 = make_D_in(y,ns)
+      var y2_y = pll.CNN.forwards(layer_D,take(yc2,D_in))
+
+      for(i <- 0 until dn/2){
+        if(y2_y(i)(0) < 0.5){
+          crr_y += 1
+        }
+        LD += -math.log(1d-y2_y(i)(0)+1e-8)
+      }
+
+      var d = pll.CNN.backwards(layer_D, y2_y.map(a => 1d/:/(1d-:-a)))
+      pll.CNN.updates(layer_D)
+
+      //入力x、D更新
+      var xn = VAE.VAE.rand.shuffle(dtrain.toList).take(dn/2)
+      val xs2 = xn.map(_._1).map(a => DenseVector(a.map(b => 2 * b -1))).toArray
+      val ns2 = xn.map(_._2).toArray
+      val us = make_D_in(xs2,ns2)
+      var y2_x = pll.CNN.forwards(layer_D,take(us,D_in))
+
+      for(i <- 0 until dn/2){
+        if(y2_x(i)(0) >= 0.5){
+          crr_x += 1
+        }
+        LD += -math.log(y2_x(i)(0)+1e-8)
+      }
+
+      d = pll.CNN.backwards(layer_D, y2_x.map(a => -1d/:/(a)))
+      pll.CNN.updates(layer_D)
+
+      println("ln:" + learn + " crr:" + crr_y/dn*200d + "," + crr_x/dn*200d + " LD:" + LD + " LG:" + LG + " " + "y2max:" + y2s.max + " y2min:" + y2s.min)
+
+      image_mono(y_im,28,10,f"GAN2/$learn%05d.png")
+
+      if(learn % 10 == 0) {
+        af1.save("af1.txt")
+        af2.save("af2.txt")
+        af3.save("af3.txt")
+        af4.save("af4.txt")
+        af5.save("af5.txt")
+        af6.save("af6.txt")
+        af7.save("af7.txt")
+  
+        bn1.save("bn1.txt")
+        bn2.save("bn2.txt")
+        bn3.save("bn3.txt")
+      }
+    }
+  }
+}
+
+
+
