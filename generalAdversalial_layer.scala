@@ -2,6 +2,7 @@ object gan_Network{
 
   def select_G(mode:String)={
     val g = mode match {
+
       case "0" =>{
         val a = new Affine(100,256,0.0002,0.5)
         val b = new BNa(256)
@@ -108,11 +109,11 @@ object gan_Network{
       }
 
       case "Dropout_C" => {
-        val a = new Affine(784,512,0.0002,0.5)
+        val a = new Affine(784+784*10,1024,0.0002,0.5)
         val b = new ReLU()
-        val c = new Affine(512,256,0.0002,0.5)
+        val c = new Affine(1024,512,0.0002,0.5)
         val d = new ReLU()
-        val e = new Affine(256,1,0.0002,0.5)
+        val e = new Affine(512,1,0.0002,0.5)
         val f = new Sigmoid()
         List(a,b,c,d,e,f)
       }

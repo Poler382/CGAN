@@ -52,7 +52,7 @@ object learning{
    }
 
 def savetxt1(list:List[Double],fn:String,path:String){
-    val pathName = "GAN/"+path+"/"+fn+".txt"
+    val pathName = path+"/"+fn+".txt"
     val writer =  new java.io.PrintWriter(pathName)
     val ys1 = list.reverse.mkString(",") + "\n"
     writer.write(ys1)
@@ -62,7 +62,7 @@ def savetxt1(list:List[Double],fn:String,path:String){
   }
 
   def savetxt2(list:List[String],fn:String,path:String){
-    val pathName = "GAN/"+path+"/"+fn+".txt"
+    val pathName = path+"/"+fn+".txt"
     val writer =  new java.io.PrintWriter(pathName)
     val ys1 = list.reverse.mkString(",") + "\n"
     writer.write(ys1)
@@ -184,7 +184,7 @@ class ML(){
    }
 
 def savetxt1(list:List[Double],fn:String,path:String){
-    val pathName = "GAN/"+path+"/"+fn+".txt"
+    val pathName = path+"/"+fn+".txt"
     val writer =  new java.io.PrintWriter(pathName)
     val ys1 = list.reverse.mkString(",") + "\n"
     writer.write(ys1)
@@ -194,7 +194,7 @@ def savetxt1(list:List[Double],fn:String,path:String){
   }
 
   def savetxt2(list:List[String],fn:String,path:String){
-    val pathName = "GAN/"+path+"/"+fn+".txt"
+    val pathName = path+"/"+fn+".txt"
     val writer =  new java.io.PrintWriter(pathName)
     val ys1 = list.reverse.mkString(",") + "\n"
     writer.write(ys1)
