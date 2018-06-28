@@ -1,4 +1,5 @@
-
+import math._
+import breeze.linalg._
 
 /*
 ****************************************************************
@@ -565,6 +566,9 @@ class Adam(val n:Int, val eps:Double = 0.0002, val rho1:Double  = 0.5, val rho2:
   }
 }
 
+
+
+
 class Softplus() extends Layer {
   var ys = List[Array[T]]()
   def push(y:Array[T]) = { ys ::= y; y }
@@ -694,6 +698,8 @@ class BNa(val xn:Int, val eps:Double = 0.001, val rho1:Double = 0.9, val rho2:Do
     dbeta = new Array[T](beta.size)
   }
 }
+
+
 
 object Image {
   def rgb(im : java.awt.image.BufferedImage, i:Int, j:Int) = {

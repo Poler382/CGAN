@@ -12,17 +12,18 @@ class mnist () {
     (train_d.zip(train_t), test_d.zip(test_t))
   }
 
-
   def load_list(dir:String) = {
-    def fd(line:String) = line.split(",").map(_.toDouble / 256*2-1).toArray
+    def fd(line:String) = line.split(",").map(_.toDouble / 256 * 2 -1).toArray
     def ft(line:String) = line.split(",").map(_.toInt).toArray
-    val train_d = scala.io.Source.fromFile(dir + "/train-d.txt").getLines.map(fd).toArray
-    val train_t = scala.io.Source.fromFile(dir + "/train-t.txt").getLines.map(ft).toArray.head
-    val test_d = scala.io.Source.fromFile(dir + "/test-d.txt").getLines.map(fd).toArray
+    var train_d = scala.io.Source.fromFile(dir + "/train-d.txt").getLines.map(fd).toArray
+    val train_t = scala.io.Source.fromFile(dir + "/train-t.txt").getLines.map(ft).toArray.head    
+    var test_d = scala.io.Source.fromFile(dir + "/test-d.txt").getLines.map(fd).toArray
     val test_t = scala.io.Source.fromFile(dir + "/test-t.txt").getLines.map(ft).toArray.head
+
+
     (train_d.zip(train_t), test_d.zip(test_t))
   }
-
+ 
   def makeimg(im : Array[Double]){
     //サイズを0〜255までに抑え込む
 

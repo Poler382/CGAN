@@ -1,7 +1,5 @@
 import java.util.Date
-
-import GAN.{learning_D, savetxt1, savetxt2}
-import breeze.collection.mutable.OpenAddressHashArray
+import breeze.linalg._
 
 import math._
 
@@ -11,7 +9,7 @@ object CGAN {
     "max1", "min1", "max2", "min2")
 
   val filepath = List(
-    "src/main/scala/generalAdversalial.scala",
+    "src/main/scala/cgeneral.scala",
     "src/main/scala/generalAdversalial_layer.scala",
     "src/main/scala/Network.scala")
 
@@ -38,25 +36,25 @@ object CGAN {
 
     println("finish load")
 
-    var acc_real = List[Double]()
-    var acc_fake = List[Double]()
+    var acc_real   = List[Double]()
+    var acc_fake   = List[Double]()
     var loss_Dlist = List[Double]()
     var loss_Glist = List[Double]()
-    var loglist = List[String]()
+    var loglist    = List[String]()
 
-    /*
-        val date = "-%tm%<td-%<tHh" format new Date
-        sys.process.Process("mkdir GAN/"+mode+date).run
 
-        val path = mode+date
+    val date = "-%tm%<td-%<tHh" format new Date
+    sys.process.Process("mkdir CGAN/"+mode+date).run
 
-        for(file <-filepath){
-          sys.process.Process("cp "+file+" GAN/"+path+"/").run
-        }
-    */
+    val path = "CGAN/"+mode+date
+
+    for(file <-filepath){
+      sys.process.Process("cp "+file+" "+path+"/").run
+    }
 
     val G = gan_Network.select_G(mode)
     val D = gan_Network.select_D(mode)
+
     println("learning start")
 
     for (i <- 0 until ln) {
@@ -65,21 +63,21 @@ object CGAN {
       val Z = z._1
       val R = z._2
 
-      val lossG = learning_G(mode, i, dn, G, D, Z)
+      val lossG = learning_G(mode, i, dn, G, D, Z, R)
 
-      val (lossD, counter1, counter2, max1, min1, max2, min2) = learning_D(mode, i, dn, G, D, dtrain, Z)
-
+      val (lossD,counter1,counter2,max1,min1,max2,min2)=learning_D(mode,i,dn,G,D,dtrain, Z,R)
       val time = System.currentTimeMillis - start
 
       if ((i + 1) % 100 == 0 || i == ln - 1) {
         println("now save...")
         gan_Network.saves(G, "g_" + mode)
         gan_Network.saves(D, "d_" + mode)
-
       }
 
       val log = learning.print_result2(i, time, namelist,
-        List(lossG, lossD, counter1 * 100 / (dn / 2), counter2 * 100 / (dn / 2), max1, min1, max2, min2), 2)
+
+        List(lossG,lossD,counter1*100/(dn/2),counter2*100/(dn/2),max1,min1,max2,min2),
+        2)
 
       acc_real ::= counter1
       acc_fake ::= counter2
@@ -87,19 +85,44 @@ object CGAN {
       loss_Glist ::= lossG
       loglist ::= log
 
+      create_image(mode, i, dn, G, D,path)
     }
 
-
-    val label = testlabel(dn, 100)
-    val y = gan_Network.forwards(G, label)
-    Image.write("CGAN/Dropout_C/test" + mode + "_" + ln.toString + ".png", Image.make_image3(y.toArray, 10, 10, 28, 28))
-
-    var path = "CGAN/"
     learning.savetxt1(acc_real,"acc_real_"+mode,path)
     learning.savetxt1(acc_fake,"acc_fake_"+mode,path)
     learning.savetxt1(loss_Dlist,"lossD_"+mode,path)
     learning.savetxt1(loss_Glist,"lossG_"+mode,path)
     learning.savetxt2(loglist,"log_"+mode,path)
+
+  }
+
+  def create_image(mode: String,ln: Int, dn: Int,
+    G: List[Layer], D: List[Layer],path:String )={
+
+    var s = Array.ofDim[Double](100,110)
+
+    for(i <- 0 until 10){
+      for(j <- 0 until 10){
+        s(i) =  Array.ofDim[Double](100).map(_=>rand.nextGaussian()) ++ onehot(i)
+      }
+    }
+
+    val y = gan_Network.forwards(G,s)
+    
+    if (ln % 100 == 0 ) {
+      Image.write(path+"/sort" + mode + "_" + ln.toString + ".png", Image.make_image3(y.toArray, 10, 10, 28, 28))
+
+      val pathName = path+"/sort" + mode + "_" + ln.toString + ".txt"
+      val writer = new java.io.PrintWriter(pathName)
+      var ys = ""
+      for(line <- y){
+        ys += line.mkString(",")+"\n"
+      }
+      writer.write(ys)
+      writer.close()
+      println("success...text and image")
+    }
+
 
   }
 
@@ -110,68 +133,26 @@ object CGAN {
     one(i) = 1d
     one
   }
+
   def onehotMatrix(i: Int) = {
     var one = Array.ofDim[Double](10,784)
     for(j <- 0 until 10){
       if(j == i ) one(j) = Array.ofDim[Double](784).map(_=>1d)
       else one(j) = Array.ofDim[Double](784).map(_=>0d)
     }
-    one
-  }
-
-  def Add_Label(dn: Int, zn: Int, x_size: Int, x: Double, n: Int) = {
-    var Z = Array.ofDim[Double](dn, zn + 10)
-    var t1 = Array.ofDim[Double](dn, 10)
-    var t2 = Array.ofDim[Double](dn, 10, x_size * x_size)
-
-    for (l <- 0 until dn) {
-      if (n == 0) {
-        val num = l / 10
-        t1(l)(num) = x
-      } else
-        t1(l)(rand.nextInt(t1(l).size)) = x
-
-      for (i <- 0 until t1(l).size) //１データごと後ろにt1のデータを詰めていく
-        Z(l)(i) = t1(l)(i)
-      for (i <- 0 until zn)
-        Z(l)(i + t1(l).size) = rand.nextGaussian()
-
-    }
-
-    for (l <- 0 until dn; i <- 0 until 10) {
-      if (t1(l)(i) == x) {
-        for (j <- 0 until x_size * x_size)
-          t2(l)(i)(j) = x
-      }
-    }
-    (t2, Z)
+    one.flatten
   }
 
   def makenoise(dn: Int, xsize: Int) = {
-    var seedZ = Array.ofDim[Double](dn, xsize + 10)
-    var seedRand = Array.ofDim[Double](dn,10)
+    var seedZ = Array.ofDim[Double](dn, xsize)
+    var seedRand = Array.ofDim[Int](dn)
 
     for (i <- 0 until dn) {
-      val z = Array.ofDim[Double](xsize).map(_ => rand.nextGaussian())
-      val label = onehot(rand.nextInt(10))
-      seedZ(i) = z ++ label
-      seedRand(i) = label
+      seedZ(i) = Array.ofDim[Double](xsize).map(_ => rand.nextGaussian())
+      seedRand(i) = rand.nextInt(10)
     }
 
     (seedZ,seedRand)
-  }
-
-  def testlabel(dn: Int, xsize: Int) = {
-    val seedZ = Array.ofDim[Double](dn, xsize + 10)
-    for (i <- 0 until dn / 10) {
-      for (j <- 0 until 10) {
-        println(i)
-        val z = Array.ofDim[Double](xsize).map(_ => rand.nextGaussian())
-        val label = onehot(i)
-        seedZ(i * 10 + j) = z ++ label
-      }
-    }
-    seedZ
   }
 
   def addlabel(xdata: Array[Array[Double]], xlabel: Array[Int]) = {
@@ -179,49 +160,63 @@ object CGAN {
     var returnx = Array.ofDim[Double](xdata.size, xsize * 11)
 
     for (i <- 0 until xdata.size) {
-      //returnx(i) = xdata(i) ++ onehotMatrix(xlabel(i))
+      returnx(i) = xdata(i) ++ onehotMatrix(xlabel(i))
+    }
+
+    returnx
+  }
+  def addonehot(Z:Array[Array[Double]], rm: Array[Int]) = {
+    val xsize = Z.size
+    var returnx = Array.ofDim[Double](xsize,784+10 )
+
+    for (i <- 0 until xsize) {
+      returnx(i) = Z(i) ++ onehot(rm(i))
     }
 
     returnx
   }
 
-  def learning_G(mode: String, ln: Int, dn: Int, G: List[Layer], D: List[Layer], Z: Array[Array[Double]]) = {
+  def learning_G(mode: String, ln: Int, dn: Int,
+    G: List[Layer], D: List[Layer], Z: Array[Array[Double]],R:Array[Int]) = {
 
 
     var lossG = 0d
     var ys = List[Array[Double]]()
 
+    val mm = addonehot(Z,R)
 
-    val y = gan_Network.forwards(G, Z)
+    val y = gan_Network.forwards(G,mm)
 
-    val y2 = gan_Network.forwards(D, y)
+    val y2 = gan_Network.forwards(D, addlabel(y,R))
 
     lossG = y2.map(a => math.log(1d - a(0) + 1e-8)).sum
-
+ 
     val d = gan_Network.backwards(D, y2.map(a => a.map(b => (-1d / b))))
-    gan_Network.backwards(G, d)
 
+    gan_Network.backwards(G, d.map(_.take(784)))
+   
     gan_Network.updates(G)
     gan_Network.resets(D)
 
-
-    if (ln % 100 == 0 || ln == 9999) {
+/*
+    if (ln % 100 == 0 ) {
       Image.write("CGAN/Dropout_C/train" + mode + "_" + ln.toString + ".png", Image.make_image3(y.toArray, 10, 10, 28, 28))
     }
-
+ */
     lossG
   }
 
-  def learning_D(where: String, ln: Int, dn: Int, G: List[Layer], D: List[Layer], dtrain: Array[(Array[Double], Int)], Z: Array[Array[Double]]) = {
-
+ 
+  def learning_D(
+    where: String, ln: Int, dn: Int,
+    G: List[Layer], D: List[Layer],
+    dtrain: Array[(Array[Double], Int)],
+    Z: Array[Array[Double]],R:Array[Int]) = {
+  
     var lossD = 0d
     var fake_counter = 0
     var real_counter = 0
-    var max1 = 0d
-    var min1 = 0d
-    var max2 = 0d
-    var min2 = 0d
-
+    var max1 = 0d;var min1 = 0d; var max2 = 0d;var min2 = 0d;
 
     val xn = rand.shuffle(dtrain.toList).take(dn / 2)
     val xdata = xn.map(_._1).toArray
@@ -242,16 +237,14 @@ object CGAN {
     min1 = y.flatten.min
 
     val d1 = gan_Network.backwards(D, y.map(a => a.map(b => -1d / (b))))
-
     gan_Network.updates(D)
 
-    var z = new Array[Array[Double]](dn / 2)
-    for (i <- 0 until dn / 2) {
-      val z1 = new Array[Double](dn).map(_ => rand.nextGaussian)
-      z(i) = z1
-    }
+    val oo =  addlabel(Z,R)
 
-    val yy = gan_Network.forwards(D, gan_Network.forwards(G, Z))
+    val im = gan_Network.forwards(G,oo)
+   
+    val yy = gan_Network.forwards(D, addlabel(im,R))
+
 
     for (i <- 0 until dn / 2) {
       if (yy(i)(0) < 0.5) {
@@ -264,6 +257,7 @@ object CGAN {
     min2 = yy.flatten.min
 
     lossD += yy.map(a => -log(1d - a(0) + 1e-8)).sum
+
 
     gan_Network.backwards(D, yy.map(a => a.map(b => 1d / (1d - b))))
 
